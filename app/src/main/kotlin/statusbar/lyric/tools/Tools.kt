@@ -30,25 +30,16 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.TypedValue
-import android.view.View
-import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.Toast
-import com.github.kyuubiran.ezxhelper.EzXHelper
 import de.robv.android.xposed.XSharedPreferences
 import de.robv.android.xposed.XposedHelpers
 import statusbar.lyric.BuildConfig
 import statusbar.lyric.MainActivity
-import statusbar.lyric.R
-import statusbar.lyric.config.XposedOwnSP.config
 import statusbar.lyric.tools.ActivityTools.isHook
 import statusbar.lyric.tools.LogTools.log
 import java.io.DataOutputStream
-import java.lang.reflect.Field
 import java.text.SimpleDateFormat
 import java.util.Locale
-import java.util.Objects
-import java.util.regex.Pattern
 import kotlin.properties.Delegates
 import kotlin.properties.ReadWriteProperty
 
@@ -56,13 +47,9 @@ import kotlin.properties.ReadWriteProperty
 object Tools {
     val buildTime: String = SimpleDateFormat("yyyy/M/d H:m:s", Locale.CHINA).format(BuildConfig.BUILD_TIME)
 
-    val isPad by lazy { getSystemProperties("ro.build.characteristics") == "tablet" }
-
     val getPhoneName by lazy {
         val xiaomiMarketName = getSystemProperties("ro.product.marketname")
-        val vivoMarketName = getSystemProperties("ro.vivo.market.name")
         when {
-            Build.BRAND.uppercaseFirstChar() == "Vivo" -> vivoMarketName.uppercaseFirstChar()
             xiaomiMarketName.isNotEmpty() -> xiaomiMarketName.uppercaseFirstChar()
             else -> "${Build.BRAND.uppercaseFirstChar()} ${Build.MODEL}"
         }
@@ -81,15 +68,6 @@ object Tools {
             dpValue,
             context.resources.displayMetrics
         ).toInt()
-
-    internal fun isPresent(name: String): Boolean {
-        return try {
-            Objects.requireNonNull(Thread.currentThread().contextClassLoader).loadClass(name)
-            true
-        } catch (_: ClassNotFoundException) {
-            false
-        }
-    }
 
     @SuppressLint("PrivateApi")
     fun getSystemProperties(key: String): String {
@@ -114,102 +92,11 @@ object Tools {
         }
     }
 
-
-    fun String.isTimeSameInternal(): Boolean {
-        val timeFormats = arrayOf(
-            SimpleDateFormat("H:mm", Locale.getDefault()),
-            SimpleDateFormat("h:mm", Locale.getDefault())
-        )
-        val nowTime = System.currentTimeMillis()
-        timeFormats.forEach { formatter ->
-            if (this.contains(formatter.format(nowTime))) {
-                return true
-            }
-        }
-        if (config.relaxConditions) {
-            if (this.contains("周") || this.contains("月") || this.contains("日")) {
-                return true
-            }
-        }
-        return false
-    }
-
-    fun String.filterClassNameInternal(): Boolean {
-        if (config.relaxConditions) return true
-        val filterKeywords = listOf("controlcenter", "image", "keyguard")
-        if (filterKeywords.any { this.contains(it, ignoreCase = true) }) {
-            return false
-        }
-        return this != TextView::class.java.name
-    }
-
-    @SuppressLint("DiscouragedApi")
-    fun View.filterViewInternal(parentView: LinearLayout): Boolean {
-        val clockContainerIdName = "clock_container"
-        val expectedPackageName = context.packageName
-        val id = context.resources.getIdentifier(clockContainerIdName, "id", expectedPackageName)
-        return if (id == 0) true else parentView.id != id
-    }
-
-    fun View.isTargetView(): Boolean {
-        if (this !is TextView) return false
-        if (this.visibility != View.VISIBLE) return false
-        if (!this.isAttachedToWindow) return false
-        val textViewClassName = config.textViewClassName
-        val textViewId = config.textViewId
-        val textSize = config.textSize
-        val viewTree = config.viewTree
-        if (textViewClassName.isEmpty() || textViewId == 0 || textSize == 0f || viewTree.isEmpty()) {
-            EzXHelper.moduleRes.getString(R.string.load_class_empty).log()
-            return false
-        }
-        if (this.javaClass.name != textViewClassName) return false
-        if (this.id != textViewId) return false
-        if (this.textSize != textSize) return false
-        val viewHierarchyList = mutableListOf<String>()
-        var currentView: View? = this
-        var currentIndent = ""
-        while (currentView != null) {
-            val viewClassName = currentView::class.java.name
-            val resourceIdName = try {
-                if (currentView.id != View.NO_ID && currentView.id != -1) {
-                    currentView.resources.getResourceEntryName(currentView.id)
-                } else {
-                    "no_id"
-                }
-            } catch (_: Exception) {
-                "Getting id name error".log()
-            }
-            viewHierarchyList.add("$currentIndent$viewClassName (id: $resourceIdName)")
-            currentIndent += "  "
-            val parent = currentView.parent
-            if (parent is View) {
-                currentView = parent
-            } else {
-                if (parent != null) {
-                    viewHierarchyList.add("$currentIndent${parent::class.java.name} (Parent, not a View)")
-                }
-                currentView = null
-            }
-        }
-        val viewHierarchy = viewHierarchyList.joinToString("\n")
-        "\nConfig viewTree: $viewTree \nThis viewTree: $viewHierarchy".log()
-        return viewTree == viewHierarchy
-    }
-
-    private fun String.regexReplace(pattern: String, newString: String): String {
-        val p = Pattern.compile("(?i)$pattern")
-        val m = p.matcher(this)
-        return m.replaceAll(newString)
-    }
-
     fun goMainThread(delayed: Long = 0, callback: () -> Unit): Boolean {
         return Handler(Looper.getMainLooper()).postDelayed({ callback() }, delayed)
     }
 
     fun Context.isLandscape() = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-
-    fun String.dispose() = this.regexReplace(" ", "").regexReplace("\n", "")
 
     fun getPref(key: String): XSharedPreferences? {
         return try {
@@ -261,12 +148,6 @@ object Tools {
         return false
     }
 
-    inline fun Boolean.isNot(callback: () -> Unit) {
-        if (!this) {
-            callback()
-        }
-    }
-
     inline fun Any?.isNull(callback: () -> Unit): Boolean {
         if (this == null) {
             callback()
@@ -290,35 +171,9 @@ object Tools {
         return XposedHelpers.getObjectField(this, fieldName)
     }
 
-    fun Any.getSuperObjectField(fieldName: String): Any? {
-        var clazz: Class<*>? = this.javaClass
-        var field: Field? = null
-
-        do {
-            try {
-                field = clazz?.getDeclaredField(fieldName)
-                break
-            } catch (_: Throwable) {
-            }
-
-            clazz = clazz?.superclass
-            if (clazz == null) break
-        } while (true)
-
-        field.isNotNull {
-            it.isAccessible = true
-            return it.get(this)
-        }
-        return null
-    }
-
     fun Any?.existField(fieldName: String): Boolean {
         if (this == null) return false
         return XposedHelpers.findFieldIfExists(this.javaClass, fieldName).isNotNull()
-    }
-
-    fun Any?.existMethod(methodName: String): Boolean {
-        return this?.javaClass?.declaredMethods?.any { it.name == methodName } == true
     }
 
     fun Any.getObjectFieldIfExist(fieldName: String): Any? {

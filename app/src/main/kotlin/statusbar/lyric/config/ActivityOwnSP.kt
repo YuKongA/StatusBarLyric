@@ -48,10 +48,4 @@ object ActivityOwnSP {
     private fun remove(key: String) {
         ownEditor.remove(key).apply()
     }
-
-    fun updateConfigVer() {
-        if (ownSP.getInt("ver", 0) < BuildConfig.COMPOSE_CONFIG_VERSION) {
-
-        }
-    }
 }

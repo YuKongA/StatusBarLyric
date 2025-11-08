@@ -152,7 +152,7 @@ fun MenuPage(
                 defaultWindowInsetsPadding = false
             )
         },
-        popupHost = { null }
+        popupHost = { }
     ) {
         LazyColumn(
             modifier = Modifier

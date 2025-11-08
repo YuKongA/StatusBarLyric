@@ -179,7 +179,7 @@ fun LyricPage(
                 defaultWindowInsetsPadding = false
             )
         },
-        popupHost = { null }
+        popupHost = { }
     ) {
         LazyColumn(
             modifier = Modifier
@@ -237,24 +237,6 @@ fun LyricPage(
                                 showLyricColorDialog.value = true
                             },
                             holdDownState = showLyricColorDialog.value
-                        )
-                        SuperArrow(
-                            title = stringResource(R.string.lyrics_are_gradient_and_transparent),
-                            titleColor = BasicComponentDefaults.titleColor(
-                                color = MiuixTheme.colorScheme.primary
-                            ),
-                            rightText = stringResource(R.string.tips1),
-                            onClick = {
-                                showLyricGradientDialog.value = true
-                            },
-                            holdDownState = showLyricGradientDialog.value
-                        )
-                        SuperArrow(
-                            title = stringResource(R.string.lyrics_gradient_background_color_and_transparency),
-                            onClick = {
-                                showLyricGradientBgColorDialog.value = true
-                            },
-                            holdDownState = showLyricGradientBgColorDialog.value
                         )
                         SuperArrow(
                             title = stringResource(R.string.lyric_background_radius),
@@ -912,8 +894,8 @@ fun LyricStartMarginsDialog(showDialog: MutableState<Boolean>) {
                     if (value.value.toIntOrNull().isNotNull() && value.value.toInt() in -2000..2000) {
                         config.lyricStartMargins = value.value.toInt()
                     } else {
-                        config.lyricStartMargins = if (config.mHyperOSTexture) 20 else 8
-                        value.value = if (config.mHyperOSTexture) "20" else "8"
+                        config.lyricStartMargins = 8
+                        value.value = "8"
                     }
                     showDialog.value = false
                     changeConfig()
@@ -957,8 +939,8 @@ fun LyricEndMarginsDialog(showDialog: MutableState<Boolean>) {
                     if (value.value.toIntOrNull().isNotNull() && value.value.toInt() in -2000..2000) {
                         config.lyricEndMargins = value.value.toInt()
                     } else {
-                        config.lyricEndMargins = if (config.mHyperOSTexture) 20 else 10
-                        value.value = if (config.mHyperOSTexture) "20" else "10"
+                        config.lyricEndMargins = 10
+                        value.value = "10"
                     }
                     showDialog.value = false
                     changeConfig()

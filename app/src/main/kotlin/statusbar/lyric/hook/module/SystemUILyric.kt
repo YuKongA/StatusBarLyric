@@ -31,14 +31,11 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.res.Configuration
 import android.graphics.Color
-import android.graphics.LinearGradient
 import android.graphics.Point
 import android.graphics.PorterDuff
-import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.media.session.PlaybackState
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
@@ -57,6 +54,7 @@ import androidx.core.util.Consumer
 import com.github.kyuubiran.ezxhelper.ClassUtils.loadClassOrNull
 import com.github.kyuubiran.ezxhelper.EzXHelper.moduleRes
 import com.github.kyuubiran.ezxhelper.HookFactory
+import com.github.kyuubiran.ezxhelper.HookFactory.`-Static`.createAfterHook
 import com.github.kyuubiran.ezxhelper.HookFactory.`-Static`.createHook
 import com.github.kyuubiran.ezxhelper.ObjectHelper.Companion.objectHelper
 import com.github.kyuubiran.ezxhelper.finders.ConstructorFinder.`-Static`.constructorFinder
@@ -68,10 +66,7 @@ import com.hchen.superlyricapi.SuperLyricTool.base64ToBitmap
 import statusbar.lyric.R
 import statusbar.lyric.config.XposedOwnSP.config
 import statusbar.lyric.hook.BaseHook
-import statusbar.lyric.hook.module.xiaomi.FocusNotifyController
 import statusbar.lyric.hook.module.xiaomi.XiaomiHooks
-import statusbar.lyric.tools.BlurTools.cornerRadius
-import statusbar.lyric.tools.BlurTools.setBackgroundBlur
 import statusbar.lyric.tools.LogTools.log
 import statusbar.lyric.tools.LyricViewTools
 import statusbar.lyric.tools.LyricViewTools.cancelAnimation
@@ -87,11 +82,8 @@ import statusbar.lyric.tools.Tools.ifNotNull
 import statusbar.lyric.tools.Tools.isLandscape
 import statusbar.lyric.tools.Tools.isNotNull
 import statusbar.lyric.tools.Tools.isNull
-import statusbar.lyric.tools.Tools.isTargetView
 import statusbar.lyric.tools.Tools.observableChange
 import statusbar.lyric.tools.Tools.shell
-import statusbar.lyric.tools.XiaomiUtils.isHyperOS
-import statusbar.lyric.tools.XiaomiUtils.isXiaomi
 import statusbar.lyric.view.LyricSwitchView
 import statusbar.lyric.view.TitleDialog
 import java.io.File
@@ -105,11 +97,22 @@ class SystemUILyric : BaseHook() {
     private var lastColor: Int by observableChange(Color.WHITE) { oldValue, newValue ->
         if (oldValue == newValue) return@observableChange
         goMainThread {
-            if (config.lyricColor.isEmpty() && config.lyricGradientColor.isEmpty()) {
-                lyricView.setTextColor(newValue)
-            }
-            if (config.iconColor.isEmpty()) {
-                iconView.setColorFilter(newValue, PorterDuff.Mode.SRC_IN)
+            if (containers.isNotEmpty()) {
+                containers.forEach { c ->
+                    if (config.lyricColor.isEmpty()) {
+                        c.lyricView.setTextColor(newValue)
+                    }
+                    if (config.iconColor.isEmpty()) {
+                        c.iconView.setColorFilter(newValue, PorterDuff.Mode.SRC_IN)
+                    }
+                }
+            } else {
+                if (config.lyricColor.isEmpty()) {
+                    lyricView.setTextColor(newValue)
+                }
+                if (config.iconColor.isEmpty()) {
+                    iconView.setColorFilter(newValue, PorterDuff.Mode.SRC_IN)
+                }
             }
         }
         "Changing Color: ${newValue.toColor()}".log()
@@ -129,8 +132,12 @@ class SystemUILyric : BaseHook() {
     }
     private var lastBase64Icon: String by observableChange("") { _, newValue ->
         goMainThread {
-            base64ToBitmap(newValue).isNotNull {
-                iconView.setImageBitmap(it)
+            base64ToBitmap(newValue).isNotNull { bmp ->
+                if (containers.isNotEmpty()) {
+                    containers.forEach { it.iconView.setImageBitmap(bmp) }
+                } else {
+                    iconView.setImageBitmap(bmp)
+                }
             }
         }
         "Changing Icon".log()
@@ -147,7 +154,7 @@ class SystemUILyric : BaseHook() {
     var isHiding: Boolean = false
     private var isRandomAnima: Boolean = false
     private var autoHideController: Any? = null
-    private val isReady: Boolean get() = this@SystemUILyric::clockView.isInitialized
+    private val isReady: Boolean get() = containers.isNotEmpty() || this@SystemUILyric::clockView.isInitialized
 
     private var theoreticalWidth: Int = 0
     private lateinit var point: Point
@@ -161,29 +168,74 @@ class SystemUILyric : BaseHook() {
     private lateinit var clockView: TextView
     private lateinit var targetView: ViewGroup
 
+    // 独立控制每个状态栏歌词容器
+    private data class LyricContainer(
+        val clock: TextView,
+        val target: ViewGroup,
+        val iconView: ImageView,
+        val lyricView: LyricSwitchView,
+        val layout: LinearLayout
+    )
 
+    private val containers = mutableListOf<LyricContainer>()
+
+    // 判断传入的 View 是否为任意容器的时钟视图
+    private fun isClockView(view: View?): Boolean {
+        if (view == null) return false
+        return if (containers.isNotEmpty()) {
+            containers.any { it.clock == view }
+        } else {
+            this::clockView.isInitialized && clockView == view
+        }
+    }
+
+    // 创建歌词容器
+    private fun createContainer(clock: TextView, target: ViewGroup): LyricContainer {
+        val localIconView = ImageView(context).apply { visibility = View.GONE }
+        val localLyricView = object : LyricSwitchView(context) {
+            override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+                super.onSizeChanged(w, h, oldw, oldh)
+            }
+        }.apply {
+            setTypeface(clock.typeface ?: Typeface.DEFAULT)
+            setSingleLine(true)
+            setMaxLines(1)
+        }
+        val localLayout = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT
+            )
+            addView(localIconView)
+            addView(localLyricView)
+            visibility = View.GONE
+        }
+        return LyricContainer(clock, target, localIconView, localLyricView, localLayout)
+    }
+
+    // 添加歌词容器
+    private fun addContainerIfAbsent(clock: TextView, target: ViewGroup) {
+        if (containers.any { it.target === target }) return
+        val container = createContainer(clock, target)
+        containers.add(container)
+        goMainThread {
+            runCatching { (container.layout.parent as? ViewGroup)?.removeView(container.layout) }
+            container.target.addView(container.layout, 0)
+        }
+    }
+
+
+    // 歌词视图
     private val lyricView: LyricSwitchView by lazy {
         object : LyricSwitchView(context) {
             override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
                 super.onSizeChanged(w, h, oldw, oldh)
-                if (config.lyricGradientColor.isNotEmpty()) {
-                    config.lyricGradientColor.trim().split(",").map { it.trim().toColorInt() }.let { colors ->
-                        if (colors.isEmpty()) {
-                            setTextColor(Color.WHITE)
-                        } else if (colors.size < 2) {
-                            setTextColor(colors[0])
-                        } else {
-                            val textShader = LinearGradient(
-                                0f, 0f, width.toFloat(), 0f, colors.toIntArray(), null, Shader.TileMode.CLAMP
-                            )
-                            setLinearGradient(textShader)
-                        }
-                    }
-                }
             }
         }.apply {
             if (!isReady) return@apply
-            setTypeface(clockView.typeface)
+            setTypeface(clockView.typeface ?: Typeface.DEFAULT)
             setSingleLine(true)
             setMaxLines(1)
         }
@@ -210,11 +262,61 @@ class SystemUILyric : BaseHook() {
         TitleDialog(context)
     }
 
-    //////////////////////////////Hook//////////////////////////////////////
+    ////////////////////////////// Hook //////////////////////////////////////
     private var defaultDisplay: Any? = null
     private var centralSurfacesImpl: Any? = null
     private var statusBatteryContainer: View? = null
     var notificationIconArea: View? = null
+    var superIslandWidth: Int by observableChange(0) { oldValue, newValue ->
+        if (oldValue == newValue) return@observableChange
+        "superIslandWidth changed: $oldValue -> $newValue".log()
+        goMainThread {
+            if (containers.isNotEmpty()) {
+                containers.forEach { c ->
+                    val lyric = lastLyric
+                    if (lyric.isEmpty()) return@forEach
+                    val lyricWidth = getLyricWidth(c, lyric)
+                    c.lyricView.width = lyricWidth
+                    val i = theoreticalWidth - lyricWidth
+                    if (i > 0) {
+                        if (config.dynamicLyricSpeed) {
+                            val proportion = i / lyricWidth
+                            val speed = 10 * proportion + 0.7f
+                            c.lyricView.setScrollSpeed(speed)
+                            "Dynamic mode (update) - Proportion: $proportion, Speed: $speed".log()
+                        } else {
+                            c.lyricView.setScrollSpeed(config.lyricSpeed.toFloat())
+                        }
+                    } else {
+                        c.lyricView.setScrollSpeed(config.lyricSpeed.toFloat())
+                    }
+                    c.lyricView.post { c.lyricView.resumeScroll() }
+                    c.lyricView.requestLayout()
+                }
+            } else {
+                val lyric = lastLyric
+                if (lyric.isNotEmpty()) {
+                    val lyricWidth = getLyricWidth(lyric)
+                    lyricView.width = lyricWidth
+                    val i = theoreticalWidth - lyricWidth
+                    if (i > 0) {
+                        if (config.dynamicLyricSpeed) {
+                            val proportion = i / lyricWidth
+                            val speed = 10 * proportion + 0.7f
+                            lyricView.setScrollSpeed(speed)
+                            "Dynamic mode (update) - Proportion: $proportion, Speed: $speed".log()
+                        } else {
+                            lyricView.setScrollSpeed(config.lyricSpeed.toFloat())
+                        }
+                    } else {
+                        lyricView.setScrollSpeed(config.lyricSpeed.toFloat())
+                    }
+                    lyricView.post { lyricView.resumeScroll() }
+                    lyricView.requestLayout()
+                }
+            }
+        }
+    }
 
     override fun init() {
         "Initializing Hook".log()
@@ -228,40 +330,38 @@ class SystemUILyric : BaseHook() {
     }
 
     private fun hook() {
-        "Hooking other method".log()
-        TextView::class.java.methodFinder().filterByName("onDraw").single().createHook {
-            after {
-                if (!canLoad) return@after
+        "Hooking clock method".log()
+        val miuiClock = loadClassOrNull("com.android.systemui.statusbar.views.MiuiClock")
+        loadClassOrNull("com.android.systemui.statusbar.views.MiuiNotificationHeaderClock")
+        miuiClock?.constructorFinder()
+            ?.filterByParamCount(3)
+            ?.filterByParamTypes {
+                it[0] == Context::class.java
+            }?.single()?.createAfterHook {
 
-                val view = it.thisObject as TextView
-                view.post {
-                    if (view.isTargetView()) {
-                        "Running onDraw".log()
-                        clockView = view
-                        targetView = (clockView.parent as LinearLayout).apply {
-                            gravity = Gravity.CENTER_VERTICAL
+                val miuiClock = it.thisObject as TextView
+                val miuiClockName = miuiClock.resources.getResourceEntryName(miuiClock.id)
+                if (miuiClockName == "clock" || miuiClockName == "pad_clock") {
+                    miuiClock.post {
+                        "Running MiuiClock".log()
+                        clockView = miuiClock
+                        if ((clockView.parent is LinearLayout).not()) {
+                            "Parent is not LinearLayout, cannot load lyric view.".log()
+                            return@post
                         }
-                        lyricLayoutInit()
-                        lyricHookInit()
-                        canLoad = false
+                        val parent = (clockView.parent as LinearLayout).apply { gravity = Gravity.CENTER_VERTICAL }
+                        addContainerIfAbsent(clockView, parent)
+                        if (canLoad) {
+                            lyricHookInit()
+                            canLoad = false
+                        }
                     }
                 }
             }
-        }
     }
 
     private fun lyricHookInit() {
         "lyricHook init".log()
-        View::class.java.methodFinder().filterByName("onDetachedFromWindow").single().createHook {
-            after {
-                val view = it.thisObject as View
-                if (view.isTargetView()) {
-                    "Running onDetachedFromWindow".log()
-                    canLoad = true
-                    updateLyricState(showLyric = false, showFocus = false)
-                }
-            }
-        }
 
         View::class.java.methodFinder().filterByName("setVisibility").single().createHook {
             before {
@@ -294,11 +394,8 @@ class SystemUILyric : BaseHook() {
                         if (it.args[0] == View.VISIBLE) {
                             val view = it.thisObject as View
                             if (
-                                (isReady && clockView == view && config.hideTime) ||
-                                (notificationIconArea == view && config.hideNotificationIcon) ||
-                                (XiaomiHooks.getCarrierLabel() == view && config.hideCarrier) ||
-                                (XiaomiHooks.getMiuiNetworkSpeedView() == view && config.mMiuiHideNetworkSpeed) ||
-                                (XiaomiHooks.getPadClockView() == view && config.hideTime)
+                                (isReady && config.hideTime && isClockView(view)) ||
+                                (notificationIconArea == view && config.hideNotificationIcon)
                             ) {
                                 it.args[0] = View.GONE
                             }
@@ -338,23 +435,9 @@ class SystemUILyric : BaseHook() {
                 }
             }
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                loadClassOrNull("com.android.systemui.statusbar.phone.fragment.CollapsedStatusBarFragment").isNotNull {
-                    it.methodFinder().filterByName("onViewCreated").single().createHook {
-                        hideNoticeIcon(1)
-                    }
-                }
-            } else {
-                loadClassOrNull("com.android.systemui.statusbar.phone.NotificationIconAreaController").isNotNull {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        it.constructorFinder().single().createHook {
-                            hideNoticeIcon(0)
-                        }
-                    } else {
-                        it.methodFinder().filterByName("initializeNotificationAreaViews").single().createHook {
-                            hideNoticeIcon(0)
-                        }
-                    }
+            loadClassOrNull("com.android.systemui.statusbar.phone.fragment.CollapsedStatusBarFragment").isNotNull {
+                it.methodFinder().filterByName("onViewCreated").single().createHook {
+                    hideNoticeIcon(1)
                 }
             }
         }
@@ -411,31 +494,41 @@ class SystemUILyric : BaseHook() {
                                         }
 
                                         false -> {
-                                            if (config.clickStatusBarToHideLyric || FocusNotifyController.isOS2FocusNotifyShowing) {
+                                            if (config.clickStatusBarToHideLyric) {
                                                 if (!isMusicPlaying) return@before
-                                                if (FocusNotifyController.isOS1FocusNotifyShowing) return@before
 
                                                 moduleRes.getString(R.string.click_status_bar_to_hide_lyric).log()
+                                                val x = motionEvent.x.toInt()
+                                                val y = motionEvent.y.toInt()
+
                                                 if (isHiding) {
-                                                    if (FocusNotifyController.canControlFocusNotify()) {
-                                                        if (FocusNotifyController.shouldOpenFocusNotify(motionEvent)) {
-                                                            "Should open focus notify".log()
-                                                            return@before
-                                                        }
-                                                    }
-                                                    FocusNotifyController.isInteraction = false
                                                     it.result = true
                                                     updateLyricState()
                                                     autoHideStatusBarInFullScreenModeIfNeed()
                                                 } else {
-                                                    val x = motionEvent.x.toInt()
-                                                    val y = motionEvent.y.toInt()
-                                                    val left = lyricLayout.left
-                                                    val top = lyricLayout.top
-                                                    val right = lyricLayout.right
-                                                    val bottom = lyricLayout.bottom
-                                                    if (x in left..right && y in top..bottom) {
-                                                        FocusNotifyController.isInteraction = true
+                                                    var hit = false
+                                                    if (containers.isNotEmpty()) {
+                                                        containers.forEach { c ->
+                                                            val left = c.layout.left
+                                                            val top = c.layout.top
+                                                            val right = c.layout.right
+                                                            val bottom = c.layout.bottom
+                                                            if (x in left..right && y in top..bottom) {
+                                                                hit = true
+                                                                return@forEach
+                                                            }
+                                                        }
+                                                    } else {
+                                                        val left = lyricLayout.left
+                                                        val top = lyricLayout.top
+                                                        val right = lyricLayout.right
+                                                        val bottom = lyricLayout.bottom
+                                                        if (x in left..right && y in top..bottom) {
+                                                            hit = true
+                                                        }
+                                                    }
+
+                                                    if (hit) {
                                                         it.result = true
                                                         updateLyricState(showLyric = false)
                                                         autoHideStatusBarInFullScreenModeIfNeed()
@@ -492,29 +585,8 @@ class SystemUILyric : BaseHook() {
         updateConfig()
     }
 
-    private fun lyricLayoutInit() {
-        goMainThread {
-            "lyricLayout init".log()
-            runCatching { (lyricLayout.parent as ViewGroup).removeView(lyricLayout) }
-            if (config.viewLocation == 0) {
-                targetView.addView(lyricLayout, 0)
-            } else {
-                targetView.addView(lyricLayout)
-            }
-            if (isXiaomi && isHyperOS && config.mHyperOSTexture) {
-                val blurRadio = config.mHyperOSTextureRadio
-                val cornerRadius = cornerRadius(config.mHyperOSTextureCorner.toFloat())
-                val blendModes = arrayOf(
-                    intArrayOf(106, config.mHyperOSTextureBgColor.toColorInt()),
-                    intArrayOf(3, config.mHyperOSTextureBgColor.toColorInt())
-                )
-                lyricLayout.setBackgroundBlur(blurRadio, cornerRadius, blendModes)
-            }
-        }
-    }
-
     // 适合考虑状态的更新
-    fun updateLyricState(showLyric: Boolean = true, showFocus: Boolean = true, delay: Int = 0) {
+    fun updateLyricState(showLyric: Boolean = true, delay: Int = 0) {
         if (
             isInFullScreenMode() &&
             (context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE ||
@@ -522,26 +594,22 @@ class SystemUILyric : BaseHook() {
         ) {
             if (statusBarShowing && showLyric && canShowLyric()) {
                 showLyric(lastLyric, delay)
-                FocusNotifyController.hideFocusNotifyIfNeed()
                 "StatusBar state is showing".log()
             } else {
                 hideLyric()
-                if (showFocus) FocusNotifyController.showFocusNotifyIfNeed()
                 if (!statusBarShowing) "StatusBar state is hiding".log()
             }
         } else {
             if (showLyric && canShowLyric()) {
                 showLyric(lastLyric, delay)
-                FocusNotifyController.hideFocusNotifyIfNeed()
             } else {
                 hideLyric()
-                if (showFocus) FocusNotifyController.showFocusNotifyIfNeed()
             }
         }
     }
 
     private fun canShowLyric(): Boolean {
-        return isMusicPlaying && !FocusNotifyController.isOS1FocusNotifyShowing && !FocusNotifyController.isInteraction
+        return isMusicPlaying
     }
 
     private fun isInFullScreenMode(): Boolean {
@@ -552,10 +620,10 @@ class SystemUILyric : BaseHook() {
             statusBarShowing = centralSurfacesImpl?.getObjectField("mTransientShown") as Boolean
         } else if (defaultDisplay.existField("isInFullscreenMode")) {
             val isInFullscreenMode = defaultDisplay?.getObjectField("isInFullscreenMode")
-            isInFullScreenMode = isInFullscreenMode?.getObjectField("$\$delegate_0")?.callMethod("getValue") as Boolean
+            isInFullScreenMode = isInFullscreenMode?.getObjectField($$$"$$delegate_0")?.callMethod("getValue") as Boolean
 
             val isTransientShown = defaultDisplay?.getObjectField("isTransientShown")
-            statusBarShowing = isTransientShown?.getObjectField("$\$delegate_0")?.callMethod("getValue") as Boolean
+            statusBarShowing = isTransientShown?.getObjectField($$$"$$delegate_0")?.callMethod("getValue") as Boolean
         }
 
         return isInFullScreenMode
@@ -642,76 +710,122 @@ class SystemUILyric : BaseHook() {
             }
         })
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(updateConfig, IntentFilter("updateConfig"), Context.RECEIVER_EXPORTED)
-        } else {
-            context.registerReceiver(updateConfig, IntentFilter("updateConfig"))
-        }
+        context.registerReceiver(updateConfig, IntentFilter("updateConfig"), Context.RECEIVER_EXPORTED)
 
         if (config.hideLyricWhenLockScreen) {
             val screenLockFilter = IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_OFF)
                 addAction(Intent.ACTION_USER_PRESENT)
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                context.registerReceiver(screenLockReceiver, screenLockFilter, Context.RECEIVER_EXPORTED)
-            } else {
-                context.registerReceiver(screenLockReceiver, screenLockFilter)
-            }
+            context.registerReceiver(screenLockReceiver, screenLockFilter, Context.RECEIVER_EXPORTED)
         }
 
         "Register SuperLyric".log()
     }
 
-    // 适用于直接显示歌词，不需要考虑其他类似焦点通知的状态
+    // 显示歌词
     private fun showLyric(lyric: String, delay: Int = 0) {
         if (!isReady || !isMusicPlaying || lyric.isEmpty() || isScreenLocked) return
 
         "Showing LyricView".log()
         goMainThread {
             isHiding = false
-            lastColor = clockView.currentTextColor
-            lyricView.apply {
-                val lyricWidth = getLyricWidth(lyric)
-                width = lyricWidth
-                val i = theoreticalWidth - lyricWidth
-                "Lyric width: $lyricWidth, Theoretical width: $theoreticalWidth, i: $i".log()
-                if (i > 0) {
-                    if (delay > 0) {
-                        val durationInSeconds = delay / 1000f
-                        if (durationInSeconds > 0) {
-                            val speed = 0.3f + (i.toFloat() / lyricWidth) * (5f / durationInSeconds)
-                            val boundedSpeed = speed.coerceIn(0.3f, 5.0f)
-                            setScrollSpeed(boundedSpeed)
-                            "Delay mode - Duration: ${durationInSeconds}, Speed: $boundedSpeed".log()
-                        }
-                    } else if (config.dynamicLyricSpeed) {
-                        val proportion = i / lyricWidth
-                        val speed = 10 * proportion + 0.7f
-                        setScrollSpeed(speed)
-                        "Dynamic mode - Proportion: $proportion, Speed: $speed".log()
+            // 多容器
+            if (containers.isNotEmpty()) {
+                containers.forEach { c ->
+                    if (config.lyricColor.isEmpty()) {
+                        c.lyricView.setTextColor(c.clock.currentTextColor)
+                    } else {
+                        c.lyricView.setTextColor(config.lyricColor.toColorInt())
                     }
-                } else {
-                    setScrollSpeed(config.lyricSpeed.toFloat())
+                    if (config.iconColor.isEmpty()) {
+                        c.iconView.setColorFilter(c.clock.currentTextColor, PorterDuff.Mode.SRC_IN)
+                    }
+                    c.lyricView.apply {
+                        val lyricWidth = getLyricWidth(c, lyric)
+                        width = lyricWidth
+                        val i = theoreticalWidth - lyricWidth
+                        "Lyric width: $lyricWidth, Theoretical width: $theoreticalWidth, i: $i".log()
+                        if (i > 0) {
+                            if (delay > 0) {
+                                val durationInSeconds = delay / 1000f
+                                if (durationInSeconds > 0) {
+                                    val speed = 0.3f + (i.toFloat() / lyricWidth) * (5f / durationInSeconds)
+                                    val boundedSpeed = speed.coerceIn(0.3f, 5.0f)
+                                    setScrollSpeed(boundedSpeed)
+                                    "Delay mode - Duration: ${durationInSeconds}, Speed: $boundedSpeed".log()
+                                }
+                            } else if (config.dynamicLyricSpeed) {
+                                val proportion = i / lyricWidth
+                                val speed = 10 * proportion + 0.7f
+                                setScrollSpeed(speed)
+                                "Dynamic mode - Proportion: $proportion, Speed: $speed".log()
+                            }
+                        } else {
+                            setScrollSpeed(config.lyricSpeed.toFloat())
+                        }
+                        if (isRandomAnima) {
+                            val animation = randomAnima
+                            val interpolator = config.lyricInterpolator
+                            val duration = config.animationDuration
+                            inAnimation = LyricViewTools.switchViewInAnima(animation, interpolator, duration)
+                            outAnimation = LyricViewTools.switchViewOutAnima(animation, duration)
+                        }
+                        setText(lyric)
+                    }
+                    c.layout.cancelAnimation()
+                    c.layout.showView()
+                    if (config.hideTime) {
+                        c.clock.hideView()
+                    }
                 }
-                if (isRandomAnima) {
-                    val animation = randomAnima
-                    val interpolator = config.lyricInterpolator
-                    val duration = config.animationDuration
-                    inAnimation = LyricViewTools.switchViewInAnima(animation, interpolator, duration)
-                    outAnimation = LyricViewTools.switchViewOutAnima(animation, duration)
+            } else {
+                // 单容器
+                lyricView.apply {
+                    if (config.lyricColor.isEmpty()) {
+                        setTextColor(clockView.currentTextColor)
+                    } else {
+                        setTextColor(config.lyricColor.toColorInt())
+                    }
+                    val lyricWidth = getLyricWidth(lyric)
+                    width = lyricWidth
+                    val i = theoreticalWidth - lyricWidth
+                    "Lyric width: $lyricWidth, Theoretical width: $theoreticalWidth, i: $i".log()
+                    if (i > 0) {
+                        if (delay > 0) {
+                            val durationInSeconds = delay / 1000f
+                            if (durationInSeconds > 0) {
+                                val speed = 0.3f + (i.toFloat() / lyricWidth) * (5f / durationInSeconds)
+                                val boundedSpeed = speed.coerceIn(0.3f, 5.0f)
+                                setScrollSpeed(boundedSpeed)
+                                "Delay mode - Duration: ${durationInSeconds}, Speed: $boundedSpeed".log()
+                            }
+                        } else if (config.dynamicLyricSpeed) {
+                            val proportion = i / lyricWidth
+                            val speed = 10 * proportion + 0.7f
+                            setScrollSpeed(speed)
+                            "Dynamic mode - Proportion: $proportion, Speed: $speed".log()
+                        }
+                    } else {
+                        setScrollSpeed(config.lyricSpeed.toFloat())
+                    }
+                    if (isRandomAnima) {
+                        val animation = randomAnima
+                        val interpolator = config.lyricInterpolator
+                        val duration = config.animationDuration
+                        inAnimation = LyricViewTools.switchViewInAnima(animation, interpolator, duration)
+                        outAnimation = LyricViewTools.switchViewOutAnima(animation, duration)
+                    }
+                    setText(lyric)
                 }
-                setText(lyric)
-            }
-            lyricLayout.cancelAnimation()
-            lyricLayout.showView()
-            if (config.hideTime) {
-                clockView.hideView()
-                XiaomiHooks.getPadClockView()?.hideView()
+                lyricLayout.cancelAnimation()
+                lyricLayout.showView()
+                if (config.hideTime) {
+                    clockView.hideView()
+                }
             }
             if (config.hideNotificationIcon) notificationIconArea?.hideView()
-            XiaomiHooks.getMiuiNetworkSpeedView()?.hideView()
-            XiaomiHooks.getCarrierLabel()?.hideView()
+            XiaomiHooks.getNotificationBigTime()?.visibility = View.GONE
         }
     }
 
@@ -719,26 +833,34 @@ class SystemUILyric : BaseHook() {
     private fun changeIcon(base64Icon: String) {
         if (!iconSwitch || !isMusicPlaying) return
 
-        lastBase64Icon = config.changeAllIcons.ifEmpty {
-            if (base64Icon.isNotEmpty()) base64Icon else config.getDefaultIcon(playingApp)
+        // 针对椒盐音乐（com.salt.music），优先使用预设图标而不是 SuperLyric 提供的 base64
+        lastBase64Icon = if (playingApp == "com.salt.music") {
+            config.changeAllIcons.ifEmpty { config.getDefaultIcon(playingApp) }
+        } else {
+            config.changeAllIcons.ifEmpty { base64Icon.ifEmpty { config.getDefaultIcon(playingApp) } }
         }
     }
 
-    // 适用于不考虑状态的隐藏
+    // 隐藏歌词
     private fun hideLyric() {
         if (!isReady || isHiding) return
         isHiding = true
 
         "Hiding LyricView".log()
         goMainThread {
-            clockView.showView()
-            lyricView.setText("")
-            lyricLayout.hideView(false)
+            if (containers.isNotEmpty()) {
+                containers.forEach { c ->
+                    c.clock.showView()
+                    c.lyricView.setText("")
+                    c.layout.hideView(false)
+                }
+            } else {
+                clockView.showView()
+                lyricView.setText("")
+                lyricLayout.hideView(false)
+            }
             if (config.titleSwitch) titleDialog.hideTitle()
             notificationIconArea?.showView()
-            XiaomiHooks.getPadClockView()?.showView()
-            XiaomiHooks.getCarrierLabel()?.showView()
-            XiaomiHooks.getMiuiNetworkSpeedView()?.showView()
             XiaomiHooks.getNotificationBigTime()?.visibility = View.VISIBLE
         }
     }
@@ -747,109 +869,220 @@ class SystemUILyric : BaseHook() {
         "Updating Config".log()
         config.update()
         goMainThread {
-            lyricView.apply {
-                setTextSize(
-                    TypedValue.COMPLEX_UNIT_SHIFT,
-                    if (config.lyricSize == 0) clockView.textSize else config.lyricSize.toFloat()
-                )
-                setMargins(config.lyricStartMargins, config.lyricTopMargins, config.lyricEndMargins, config.lyricBottomMargins)
-                if (config.lyricGradientColor.isEmpty()) {
+            // 多容器
+            if (containers.isNotEmpty()) {
+                containers.forEach { c ->
+                    c.lyricView.apply {
+                        setTextSize(
+                            TypedValue.COMPLEX_UNIT_SHIFT,
+                            if (config.lyricSize == 0) c.clock.textSize else config.lyricSize.toFloat()
+                        )
+                        setMargins(
+                            config.lyricStartMargins,
+                            config.lyricTopMargins,
+                            config.lyricEndMargins,
+                            config.lyricBottomMargins
+                        )
+                        if (config.lyricColor.isEmpty()) {
+                            setTextColor(c.clock.currentTextColor)
+                        } else {
+                            setTextColor(config.lyricColor.toColorInt())
+                        }
+                        setLetterSpacings(config.lyricLetterSpacing / 100f)
+                        setStrokeWidth(config.lyricStrokeWidth / 100f)
+                        if (!config.dynamicLyricSpeed) setScrollSpeed(config.lyricSpeed.toFloat())
+                        if (config.lyricBackgroundColor.isNotEmpty()) {
+                            val solidColor = config.lyricBackgroundColor.trim().split(",").first().trim().toColorInt()
+                            if (config.lyricBackgroundRadius != 0) {
+                                setBackgroundColor(Color.TRANSPARENT)
+                                background = GradientDrawable().apply {
+                                    cornerRadius = config.lyricBackgroundRadius.toFloat()
+                                    setColor(solidColor)
+                                }
+                            } else {
+                                setBackgroundColor(solidColor)
+                            }
+                        }
+                        val animation = config.lyricAnimation
+                        isRandomAnima = animation == 11
+                        if (!isRandomAnima) {
+                            val interpolator = config.lyricInterpolator
+                            val duration = config.animationDuration
+                            inAnimation = LyricViewTools.switchViewInAnima(animation, interpolator, duration)
+                            outAnimation = LyricViewTools.switchViewOutAnima(animation, duration)
+                        }
+                        runCatching {
+                            val file = File("${context.filesDir.path}/font")
+                            if (file.exists() && file.canRead()) {
+                                setTypeface(Typeface.createFromFile(file))
+                            }
+                        }
+                    }
+                    if (config.iconSwitch) {
+                        c.iconView.apply {
+                            layoutParams = LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                                LinearLayout.LayoutParams.MATCH_PARENT
+                            ).apply {
+                                setMargins(
+                                    config.iconStartMargins,
+                                    config.iconTopMargins,
+                                    0,
+                                    config.iconBottomMargins
+                                )
+                                if (config.iconSize == 0) {
+                                    width = c.clock.height / 2
+                                    height = c.clock.height / 2
+                                } else {
+                                    width = config.iconSize
+                                    height = config.iconSize
+                                }
+                            }
+                            if (config.iconColor.isEmpty()) {
+                                setColorFilter(c.clock.currentTextColor, PorterDuff.Mode.SRC_IN)
+                            } else {
+                                setColorFilter(config.iconColor.toColorInt(), PorterDuff.Mode.SRC_IN)
+                            }
+                            if (config.iconBgColor.isEmpty()) {
+                                setBackgroundColor(Color.TRANSPARENT)
+                            } else {
+                                setBackgroundColor(config.iconBgColor.toColorInt())
+                            }
+                            showView()
+                        }
+                    } else {
+                        c.iconView.hideView()
+                    }
+                }
+            } else {
+                // 单容器
+                lyricView.apply {
+                    setTextSize(
+                        TypedValue.COMPLEX_UNIT_SHIFT,
+                        if (config.lyricSize == 0) clockView.textSize else config.lyricSize.toFloat()
+                    )
+                    setMargins(
+                        config.lyricStartMargins,
+                        config.lyricTopMargins,
+                        config.lyricEndMargins,
+                        config.lyricBottomMargins
+                    )
                     if (config.lyricColor.isEmpty()) {
                         setTextColor(clockView.currentTextColor)
                     } else {
                         setTextColor(config.lyricColor.toColorInt())
                     }
-                }
-                setLetterSpacings(config.lyricLetterSpacing / 100f)
-                setStrokeWidth(config.lyricStrokeWidth / 100f)
-                if (!config.dynamicLyricSpeed) setScrollSpeed(config.lyricSpeed.toFloat())
-                if (config.lyricBackgroundColor.isNotEmpty()) {
-                    if (config.lyricBackgroundColor.split(",").size < 2) {
+                    setLetterSpacings(config.lyricLetterSpacing / 100f)
+                    setStrokeWidth(config.lyricStrokeWidth / 100f)
+                    if (!config.dynamicLyricSpeed) setScrollSpeed(config.lyricSpeed.toFloat())
+                    if (config.lyricBackgroundColor.isNotEmpty()) {
+                        val solidColor = config.lyricBackgroundColor.trim().split(",").first().trim().toColorInt()
                         if (config.lyricBackgroundRadius != 0) {
                             setBackgroundColor(Color.TRANSPARENT)
                             background = GradientDrawable().apply {
                                 cornerRadius = config.lyricBackgroundRadius.toFloat()
-                                setColor(config.lyricBackgroundColor.toColorInt())
+                                setColor(solidColor)
                             }
                         } else {
-                            setBackgroundColor(config.lyricBackgroundColor.toColorInt())
+                            setBackgroundColor(solidColor)
                         }
-                    } else {
-                        config.lyricBackgroundColor.trim().split(",").map { it.trim().toColorInt() }.let { colors ->
-                            val gradientDrawable = GradientDrawable(
-                                GradientDrawable.Orientation.LEFT_RIGHT, colors.toIntArray()
-                            ).apply {
-                                if (config.lyricBackgroundRadius != 0) {
-                                    cornerRadius = config.lyricBackgroundRadius.toFloat()
-                                }
+                    }
+                    val animation = config.lyricAnimation
+                    isRandomAnima = animation == 11
+                    if (!isRandomAnima) {
+                        val interpolator = config.lyricInterpolator
+                        val duration = config.animationDuration
+                        inAnimation = LyricViewTools.switchViewInAnima(animation, interpolator, duration)
+                        outAnimation = LyricViewTools.switchViewOutAnima(animation, duration)
+                    }
+                    runCatching {
+                        val file = File("${context.filesDir.path}/font")
+                        if (file.exists() && file.canRead()) {
+                            setTypeface(Typeface.createFromFile(file))
+                        }
+                    }
+                }
+                if (config.iconSwitch) {
+                    iconView.apply {
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT
+                        ).apply {
+                            setMargins(
+                                config.iconStartMargins, config.iconTopMargins, 0, config.iconBottomMargins
+                            )
+                            if (config.iconSize == 0) {
+                                width = clockView.height / 2
+                                height = clockView.height / 2
+                            } else {
+                                width = config.iconSize
+                                height = config.iconSize
                             }
-                            background = gradientDrawable
                         }
-                    }
-                }
-                val animation = config.lyricAnimation
-                isRandomAnima = animation == 11
-                if (!isRandomAnima) {
-                    val interpolator = config.lyricInterpolator
-                    val duration = config.animationDuration
-                    inAnimation = LyricViewTools.switchViewInAnima(animation, interpolator, duration)
-                    outAnimation = LyricViewTools.switchViewOutAnima(animation, duration)
-                }
-                runCatching {
-                    val file = File("${context.filesDir.path}/font")
-                    if (file.exists() && file.canRead()) {
-                        setTypeface(Typeface.createFromFile(file))
-                    }
-                }
-            }
-            if (config.iconSwitch) {
-                iconView.apply {
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT
-                    ).apply {
-                        setMargins(
-                            config.iconStartMargins, config.iconTopMargins, 0, config.iconBottomMargins
-                        )
-                        if (config.iconSize == 0) {
-                            width = clockView.height / 2
-                            height = clockView.height / 2
+                        if (config.iconColor.isEmpty()) {
+                            setColorFilter(clockView.currentTextColor, PorterDuff.Mode.SRC_IN)
                         } else {
-                            width = config.iconSize
-                            height = config.iconSize
+                            setColorFilter(config.iconColor.toColorInt(), PorterDuff.Mode.SRC_IN)
                         }
+                        if (config.iconBgColor.isEmpty()) {
+                            setBackgroundColor(Color.TRANSPARENT)
+                        } else {
+                            setBackgroundColor(config.iconBgColor.toColorInt())
+                        }
+                        showView()
                     }
-                    if (config.iconColor.isEmpty()) {
-                        setColorFilter(clockView.currentTextColor, PorterDuff.Mode.SRC_IN)
-                    } else {
-                        setColorFilter(config.iconColor.toColorInt(), PorterDuff.Mode.SRC_IN)
-                    }
-                    if (config.iconBgColor.isEmpty()) {
-                        setBackgroundColor(Color.TRANSPARENT)
-                    } else {
-                        setBackgroundColor(config.iconBgColor.toColorInt())
-                    }
-                    showView()
+                } else {
+                    iconView.hideView()
                 }
-            } else {
-                iconView.hideView()
             }
         }
     }
 
+    // 单容器下获取歌词宽度
     private fun getLyricWidth(lyric: String): Int {
         "Getting Lyric Width".log()
         val textView = TextView(context).apply {
             setTextSize(
                 TypedValue.COMPLEX_UNIT_SHIFT, if (config.lyricSize == 0) clockView.textSize else config.lyricSize.toFloat()
             )
-            setTypeface(clockView.typeface)
+            setTypeface(clockView.typeface ?: Typeface.DEFAULT)
             letterSpacing = config.lyricLetterSpacing / 100f
             paint.strokeWidth = config.lyricStrokeWidth / 100f
         }
         val textWidth = textView.paint.measureText(lyric).toInt()
         theoreticalWidth = textWidth
         return if (config.lyricWidth == 0) {
-            min(textView.paint.measureText(lyric).toInt(), targetView.width - config.lyricStartMargins - config.lyricEndMargins)
+            min(
+                textView.paint.measureText(lyric).toInt(),
+                targetView.width - config.lyricStartMargins - config.lyricEndMargins - superIslandWidth
+            )
+        } else {
+            if (config.fixedLyricWidth) {
+                scaleWidth()
+            } else {
+                min(textView.paint.measureText(lyric).toInt(), scaleWidth())
+            }
+        }
+    }
+
+    // 多容器下获取歌词宽度
+    private fun getLyricWidth(container: LyricContainer, lyric: String): Int {
+        "Getting Lyric Width (container)".log()
+        val textView = TextView(context).apply {
+            setTextSize(
+                TypedValue.COMPLEX_UNIT_SHIFT,
+                if (config.lyricSize == 0) container.clock.textSize else config.lyricSize.toFloat()
+            )
+            setTypeface(container.clock.typeface ?: Typeface.DEFAULT)
+            letterSpacing = config.lyricLetterSpacing / 100f
+            paint.strokeWidth = config.lyricStrokeWidth / 100f
+        }
+        val textWidth = textView.paint.measureText(lyric).toInt()
+        theoreticalWidth = textWidth
+        return if (config.lyricWidth == 0) {
+            min(
+                textView.paint.measureText(lyric).toInt(),
+                container.target.width - config.lyricStartMargins - config.lyricEndMargins - superIslandWidth
+            )
         } else {
             if (config.fixedLyricWidth) {
                 scaleWidth()
@@ -878,6 +1111,7 @@ class SystemUILyric : BaseHook() {
         }
     }
 
+    // 屏幕锁定状态监听
     inner class ScreenLockReceiver : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             isScreenLocked = intent.action == Intent.ACTION_SCREEN_OFF

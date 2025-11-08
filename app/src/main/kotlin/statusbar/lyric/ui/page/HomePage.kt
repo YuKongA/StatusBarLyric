@@ -150,7 +150,7 @@ fun HomePage(
                 defaultWindowInsetsPadding = false
             )
         },
-        popupHost = { null }
+        popupHost = { }
     ) {
         LazyColumn(
             modifier = Modifier
@@ -226,43 +226,6 @@ fun HomePage(
                         }
                     }
                     Column {
-                        AnimatedVisibility(
-                            visible = masterSwitchState.value,
-                            enter = AnimTools().enterTransition(0),
-                            exit = AnimTools().exitTransition(100)
-                        ) {
-                            Column {
-                                SmallTitle(
-                                    text = stringResource(R.string.module_first),
-                                    modifier = Modifier.padding(top = 6.dp)
-                                )
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 12.dp)
-                                        .padding(bottom = 6.dp)
-                                ) {
-                                    SuperArrow(
-                                        title = stringResource(R.string.hook_page),
-                                        summary = if (config.textViewId == 0) {
-                                            stringResource(R.string.test_mode_tips).split("\n")[0]
-                                        } else null,
-                                        onClick = {
-                                            if (currentRoute != "TestPage") {
-                                                navController.navigate("TestPage") {
-                                                    popUpTo("HomePage") {
-                                                        saveState = true
-                                                    }
-                                                    launchSingleTop = true
-                                                    restoreState = true
-                                                }
-                                            }
-                                        },
-                                        holdDownState = currentRoute == "TestPage"
-                                    )
-                                }
-                            }
-                        }
                         AnimatedVisibility(
                             visible = masterSwitchState.value,
                             enter = AnimTools().enterTransition(40),
@@ -342,22 +305,6 @@ fun HomePage(
                                             }
                                         },
                                         holdDownState = currentRoute == "ExtendPage"
-                                    )
-
-                                    SuperArrow(
-                                        title = stringResource(R.string.system_special_page),
-                                        onClick = {
-                                            if (currentRoute != "SystemSpecialPage") {
-                                                navController.navigate("SystemSpecialPage") {
-                                                    popUpTo("HomePage") {
-                                                        saveState = true
-                                                    }
-                                                    launchSingleTop = true
-                                                    restoreState = true
-                                                }
-                                            }
-                                        },
-                                        holdDownState = currentRoute == "SystemSpecialPage"
                                     )
                                 }
                             }

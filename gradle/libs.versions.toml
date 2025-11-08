@@ -1,19 +1,19 @@
 [versions]
-android-gradle-plugin = "8.10.0"
-androidx-core-kit = "1.16.0"
-androidx-activity-compose = "1.10.1"
-androidx-compose-foundation = "1.8.2"
-androidx-navigation-compose = "2.9.0"
+android-gradle-plugin = "8.13.0"
+androidx-core-ktx = "1.17.0"
+androidx-activity-compose = "1.11.0"
+androidx-compose-foundation = "1.9.4"
+androidx-navigation-compose = "2.9.6"
 ezXHelper = "2.2.1"
-haze = "1.6.2"
-kotlin = "2.1.21"
-miuix = "0.4.5"
-super-lyric-api = "1.7"
+haze = "1.6.10"
+kotlin = "2.2.21"
+miuix = "0.6.1"
+super-lyric-api = "2.4"
 xposed = "82"
 
 [libraries]
 androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "androidx-compose-foundation" }
-androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core-kit" }
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core-ktx" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "androidx-activity-compose" }
 androidx-ui = { group = "androidx.compose.ui", name = "ui" }
 androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
@@ -21,7 +21,7 @@ androidx-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "androidx-navigation-compose" }
 ezXHelper = { module = "com.github.kyuubiran:EzXHelper", version.ref = "ezXHelper" }
-haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
+haze = { module = "dev.chrisbanes.haze:haze-android", version.ref = "haze" }
 miuix = { module = "top.yukonga.miuix.kmp:miuix-android", version.ref = "miuix" }
 superlyricapi = { module = "com.github.HChenX:SuperLyricApi", version.ref = "super-lyric-api" }
 xposed = { module = "de.robv.android.xposed:api", version.ref = "xposed" }

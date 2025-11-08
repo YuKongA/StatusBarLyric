@@ -85,48 +85,6 @@ class Config {
         set(value) {
             config.put("hideNotificationIcon", value)
         }
-    var testMode: Boolean
-        get() {
-            return config.opt("testMode", false)
-        }
-        set(value) {
-            config.put("testMode", value)
-        }
-    var relaxConditions: Boolean
-        get() {
-            return config.opt("relaxConditions", false)
-        }
-        set(value) {
-            config.put("relaxConditions", value)
-        }
-    var textViewClassName: String
-        get() {
-            return config.opt("textViewClassName", "")
-        }
-        set(value) {
-            config.put("textViewClassName", value)
-        }
-    var textViewId: Int
-        get() {
-            return config.opt("textViewId", 0)
-        }
-        set(value) {
-            config.put("textViewId", value)
-        }
-    var textSize: Float
-        get() {
-            return config.opt("textSize", 0f)
-        }
-        set(value) {
-            config.put("textSize", value)
-        }
-    var viewTree: String
-        get() {
-            return config.opt("viewTree", "")
-        }
-        set(value) {
-            config.put("viewTree", value)
-        }
     var lyricSize: Int
         get() {
             return config.opt("lyricSize", 0)
@@ -136,7 +94,7 @@ class Config {
         }
     var lyricStartMargins: Int
         get() {
-            return config.opt("lyricStart", if (mHyperOSTexture) 20 else 8)
+            return config.opt("lyricStart", 8)
         }
         set(value) {
             config.put("lyricStart", value)
@@ -150,7 +108,7 @@ class Config {
         }
     var lyricEndMargins: Int
         get() {
-            return config.opt("lyricEnd", if (mHyperOSTexture) 20 else 10)
+            return config.opt("lyricEnd", 10)
         }
         set(value) {
             config.put("lyricEnd", value)
@@ -171,7 +129,7 @@ class Config {
         }
     var iconStartMargins: Int
         get() {
-            return config.opt("iconStart", if (mHyperOSTexture) 20 else 0)
+            return config.opt("iconStart", 0)
         }
         set(value) {
             config.put("iconStart", value)
@@ -330,13 +288,6 @@ class Config {
         set(value) {
             config.put("hideLyricWhenLockScreen", value)
         }
-    var hideCarrier: Boolean
-        get() {
-            return config.opt("hideCarrier", false)
-        }
-        set(value) {
-            config.put("hideCarrier", value)
-        }
     var dynamicLyricSpeed: Boolean
         get() {
             return config.opt("dynamicLyricSpeed", false)
@@ -350,14 +301,6 @@ class Config {
         }
         set(value) {
             config.put("clickStatusBarToHideLyric", value)
-        }
-
-    var mMiuiHideNetworkSpeed: Boolean
-        get() {
-            return config.opt("mMiuiHideNetworkSpeed", false)
-        }
-        set(value) {
-            config.put("mMiuiHideNetworkSpeed", value)
         }
     var slideStatusBarCutSongs: Boolean
         get() {
@@ -380,44 +323,9 @@ class Config {
         set(value) {
             config.put("slideStatusBarCutSongsYRadius", value)
         }
-    var mMiuiPadOptimize: Boolean
-        get() {
-            return config.opt("mMiuiPadOptimize", false)
-        }
-        set(value) {
-            config.put("mMiuiPadOptimize", value)
-        }
-    var mHyperOSTexture: Boolean
-        get() {
-            return config.opt("mHyperOSTexture", false)
-        }
-        set(value) {
-            config.put("mHyperOSTexture", value)
-        }
-    var mHyperOSTextureRadio: Int
-        get() {
-            return config.opt("mHyperOSTextureRadio", 25)
-        }
-        set(value) {
-            config.put("mHyperOSTextureRadio", value)
-        }
-    var mHyperOSTextureCorner: Int
-        get() {
-            return config.opt("mHyperOSTextureCorner", 32)
-        }
-        set(value) {
-            config.put("mHyperOSTextureCorner", value)
-        }
-    var mHyperOSTextureBgColor: String
-        get() {
-            return config.opt("mHyperOSTextureBgColor", "#15818181")
-        }
-        set(value) {
-            config.put("mHyperOSTextureBgColor", value)
-        }
     var titleSwitch: Boolean
         get() {
-            return config.opt("titleSwitch", true)
+            return config.opt("titleSwitch", false)
         }
         set(value) {
             config.put("titleSwitch", value)
@@ -478,21 +386,6 @@ class Config {
         set(value) {
             config.put("changeAllIcons", value)
         }
-    var viewLocation: Int
-        get() {
-            return config.opt("viewLocation", 0)
-        }
-        set(value) {
-            config.put("viewLocation", value)
-        }
-    var automateFocusedNotice: Boolean
-        get() {
-            return config.opt("automateFocusedNotice", true)
-        }
-        set(value) {
-            config.put("automateFocusedNotice", value)
-        }
-
     var pageRatio: Float
         get() {
             return config.opt("pageRatio", 0.5f)

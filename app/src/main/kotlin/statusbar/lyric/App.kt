@@ -58,14 +58,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import statusbar.lyric.config.ActivityOwnSP.config
-import statusbar.lyric.ui.page.ChoosePage
 import statusbar.lyric.ui.page.ExtendPage
 import statusbar.lyric.ui.page.HomePage
 import statusbar.lyric.ui.page.IconPage
 import statusbar.lyric.ui.page.LyricPage
 import statusbar.lyric.ui.page.MenuPage
-import statusbar.lyric.ui.page.SystemSpecialPage
-import statusbar.lyric.ui.page.TestPage
 import statusbar.lyric.ui.theme.AppTheme
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -142,7 +139,7 @@ fun PortraitLayout(
         }
     ) {
         composable("HomePage") { HomePage(navController, currentRoute) }
-        pageDestinations(navController, currentRoute)
+        pageDestinations(navController)
     }
 }
 
@@ -195,22 +192,18 @@ fun LandscapeLayout(
             exitTransition = { fadeOut(targetAlpha = 1f) },
         ) {
             composable("HomePage") { EmptyPage() }
-            pageDestinations(navController, currentRoute)
+            pageDestinations(navController)
         }
     }
 }
 
 fun NavGraphBuilder.pageDestinations(
-    navController: NavHostController,
-    currentRoute: String
+    navController: NavHostController
 ) {
-    composable("ChoosePage") { ChoosePage(navController) }
-    composable("TestPage") { TestPage(navController, currentRoute) }
     composable("MenuPage") { MenuPage(navController) }
     composable("LyricPage") { LyricPage(navController) }
     composable("IconPage") { IconPage(navController) }
     composable("ExtendPage") { ExtendPage(navController) }
-    composable("SystemSpecialPage") { SystemSpecialPage(navController) }
 }
 
 @Composable

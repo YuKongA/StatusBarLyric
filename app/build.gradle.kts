@@ -18,13 +18,15 @@ if (rootProject.file("local.properties").canRead()) {
 android {
     namespace = "statusbar.lyric"
     compileSdk = 36
+    compileSdkMinor = 1
+    buildToolsVersion = "36.1.0"
 
     defaultConfig {
         applicationId = "statusbar.lyric"
-        minSdk = 30
+        minSdk = 36
         targetSdk = 36
-        versionCode = 720
-        versionName = "7.2.0"
+        versionCode = 800
+        versionName = "8.0.0"
         buildConfigField("long", "BUILD_TIME", "$buildTime")
         buildConfigField("int", "COMPOSE_CONFIG_VERSION", "1")
     }

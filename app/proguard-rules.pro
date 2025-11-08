@@ -25,9 +25,3 @@
 -dontskipnonpubliclibraryclassmembers
 -allowaccessmodification
 -optimizations !code/simplification/arithmetic,!code/simplification/cast,!field/*,!class/merging/*,!code/allocation/variable
--repackageclasses ztlgc
--obfuscationdictionary proguard-dic-6.txt
--classobfuscationdictionary proguard-dic-6.txt
--packageobfuscationdictionary proguard-dic-6.txt
--adaptresourcefilenames proguard-dic-6.txt
--adaptresourcefilecontents proguard-dic-6.txt

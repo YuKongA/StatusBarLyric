@@ -25,7 +25,7 @@ package statusbar.lyric.view
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.Shader
+import android.graphics.Typeface
 import android.view.Choreographer
 import android.widget.TextView
 import statusbar.lyric.config.XposedOwnSP.config
@@ -38,10 +38,12 @@ class LyricTextView(context: Context) : TextView(context), Choreographer.FrameCa
     private var scrollSpeed = 4f
     private var currentX = 0f
     private var textY = 0f
+    private var lastFrameNanos = 0L
     private val startScrollRunnable = Runnable { Choreographer.getInstance().postFrameCallback(this) }
 
     init {
         paint.style = Paint.Style.FILL_AND_STROKE
+        paint.isAntiAlias = true
         setLayerType(LAYER_TYPE_HARDWARE, paint)
     }
 
@@ -56,6 +58,7 @@ class LyricTextView(context: Context) : TextView(context), Choreographer.FrameCa
         textString = text.toString()
         textLength = getTextLength(textString)
         super.setText(text, type)
+        recomputeTextMetrics()
         startScroll()
     }
 
@@ -64,50 +67,100 @@ class LyricTextView(context: Context) : TextView(context), Choreographer.FrameCa
         postInvalidate()
     }
 
-    fun setLinearGradient(shader: Shader) {
-        paint.shader = shader
-        postInvalidate()
-    }
-
     fun setStrokeWidth(width: Float) {
         paint.strokeWidth = width
         postInvalidate()
+    }
+
+    override fun setTextSize(unit: Int, size: Float) {
+        super.setTextSize(unit, size)
+        paint.textSize = this.textSize
+        recomputeTextMetrics()
+    }
+
+    override fun setTextSize(size: Float) {
+        super.setTextSize(size)
+        paint.textSize = this.textSize
+        recomputeTextMetrics()
+    }
+
+    override fun setTypeface(typeface: Typeface?) {
+        super.setTypeface(typeface)
+        paint.typeface = this.typeface
+        recomputeTextMetrics()
+    }
+
+    override fun setLetterSpacing(letterSpacing: Float) {
+        super.setLetterSpacing(letterSpacing)
+        paint.letterSpacing = letterSpacing
+        recomputeTextMetrics()
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         viewWidth = w.toFloat()
         textY = (h - (paint.descent() + paint.ascent())) / 2
+        resumeScroll()
     }
 
     override fun onDraw(canvas: Canvas) {
         canvas.drawText(textString, currentX, textY, paint)
     }
 
-    private fun updateScrollPosition() {
+    private fun updateScrollPosition(step: Float) {
         val realTextLength = textLength
         val realLyricWidth = viewWidth
         if (realTextLength <= realLyricWidth) {
             currentX = 0f
             stopScroll()
-        } else if (realLyricWidth - currentX >= realTextLength) {
-            currentX = realLyricWidth - realTextLength
-            stopScroll()
+            return
+        }
+
+        val targetX = realLyricWidth - realTextLength
+        if (currentX > targetX) {
+            // 向左滚动
+            val nextX = currentX - step
+            if (nextX <= targetX) {
+                currentX = targetX
+                postInvalidate()
+                stopScroll()
+            } else {
+                currentX = nextX
+                postInvalidate()
+            }
+        } else if (currentX < targetX) {
+            // 向右回退
+            val nextX = currentX + step
+            if (nextX >= targetX) {
+                currentX = targetX
+                postInvalidate()
+                stopScroll()
+            } else {
+                currentX = nextX
+                postInvalidate()
+            }
         } else {
-            currentX -= scrollSpeed
-            postInvalidate()
+            // 已到位
+            stopScroll()
         }
     }
 
     override fun doFrame(frameTimeNanos: Long) {
         if (isScrolling) {
-            updateScrollPosition()
+            val last = lastFrameNanos
+            lastFrameNanos = frameTimeNanos
+            if (last != 0L) {
+                val deltaSeconds = (frameTimeNanos - last) / 1_000_000_000f
+                val step = scrollSpeed * (deltaSeconds * 60f)
+                updateScrollPosition(step)
+            }
             Choreographer.getInstance().postFrameCallback(this)
         }
     }
 
     private fun startScroll() {
         isScrolling = true
+        lastFrameNanos = 0L
         postDelayed(
             startScrollRunnable,
             config.animationDuration + if (config.dynamicLyricSpeed) 200L else 500L
@@ -118,13 +171,35 @@ class LyricTextView(context: Context) : TextView(context), Choreographer.FrameCa
         isScrolling = false
         removeCallbacks(startScrollRunnable)
         Choreographer.getInstance().removeFrameCallback(this)
+        lastFrameNanos = 0L
     }
 
-    private fun getTextLength(text: String): Float {
-        return paint.measureText(text)
+    private fun getTextLength(text: CharSequence?): Float {
+        return paint.measureText(text?.toString() ?: "")
     }
 
     fun setScrollSpeed(speed: Float) {
         this.scrollSpeed = speed
+    }
+
+    fun resumeScroll() {
+        if (textLength <= viewWidth) {
+            currentX = 0f
+            stopScroll()
+            return
+        }
+        isScrolling = true
+        lastFrameNanos = 0L
+        Choreographer.getInstance().postFrameCallback(this)
+    }
+
+    private fun recomputeTextMetrics() {
+        val current = this.text
+        textString = current?.toString() ?: textString
+        textLength = getTextLength(current)
+        if (height > 0) {
+            textY = (height - (paint.descent() + paint.ascent())) / 2f
+        }
+        postInvalidate()
     }
 }

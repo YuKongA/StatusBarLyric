@@ -32,7 +32,6 @@ import statusbar.lyric.R
 import statusbar.lyric.config.XposedOwnSP.config
 import statusbar.lyric.hook.module.Self
 import statusbar.lyric.hook.module.SystemUILyric
-import statusbar.lyric.hook.module.SystemUITest
 import statusbar.lyric.tools.LogTools
 import statusbar.lyric.tools.LogTools.log
 import java.util.Locale
@@ -49,16 +48,10 @@ class MainHook : IXposedHookLoadPackage, IXposedHookZygoteInit {
                     return
                 }
                 "${BuildConfig.APPLICATION_ID} - ${BuildConfig.VERSION_NAME}(${BuildConfig.VERSION_CODE}[${Locale.getDefault().language}] *${BuildConfig.BUILD_TYPE})".log()
-                if (config.testMode) {
-                    moduleRes.getString(R.string.hook_page).log()
-                    initHooks(SystemUITest())
-                } else {
-                    moduleRes.getString(R.string.lyric_mode).log()
-                    try {
-                        initHooks(SystemUILyric())
-                    } catch (t: Throwable) {
-                        t.log()
-                    }
+                try {
+                    initHooks(SystemUILyric())
+                } catch (t: Throwable) {
+                    t.log()
                 }
             }
 
