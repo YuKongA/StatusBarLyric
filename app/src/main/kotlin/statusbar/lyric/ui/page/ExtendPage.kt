@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableIntStateOf
@@ -51,6 +52,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
@@ -63,6 +65,7 @@ import dev.chrisbanes.haze.hazeSource
 import statusbar.lyric.R
 import statusbar.lyric.config.ActivityOwnSP.config
 import statusbar.lyric.tools.ActivityTools
+import statusbar.lyric.tools.ActivityTools.changeConfig
 import statusbar.lyric.tools.Tools.isNotNull
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
@@ -94,7 +97,6 @@ fun ExtendPage(
 ) {
     val scrollBehavior = MiuixScrollBehavior(rememberTopAppBarState())
     val hideTime = remember { mutableStateOf(config.hideTime) }
-    val hideNotificationIcon = remember { mutableStateOf(config.hideNotificationIcon) }
     val hideLyricWhenLockScreen = remember { mutableStateOf(config.hideLyricWhenLockScreen) }
     val longClickStatusBarStop = remember { mutableStateOf(config.longClickStatusBarStop) }
     val clickStatusBarToHideLyric = remember { mutableStateOf(config.clickStatusBarToHideLyric) }
@@ -118,6 +120,7 @@ fun ExtendPage(
     val showTitleRadiusDialog = remember { mutableStateOf(false) }
     val showTitleStrokeWidthDialog = remember { mutableStateOf(false) }
     val showTitleStrokeColorDialog = remember { mutableStateOf(false) }
+    val showIslandOffsetDialog = remember { mutableStateOf(false) }
 
     val hazeState = remember { HazeState() }
     val hazeStyle = HazeStyle(
@@ -200,14 +203,6 @@ fun ExtendPage(
                             }
                         )
                         SuperSwitch(
-                            title = stringResource(R.string.hide_notification_icon),
-                            checked = hideNotificationIcon.value,
-                            onCheckedChange = {
-                                hideNotificationIcon.value = it
-                                config.hideNotificationIcon = it
-                            }
-                        )
-                        SuperSwitch(
                             title = stringResource(R.string.hide_lyric_when_lock_screen),
                             checked = hideLyricWhenLockScreen.value,
                             onCheckedChange = {
@@ -283,6 +278,13 @@ fun ExtendPage(
                                 dynamicLyricSpeed.value = it
                                 config.dynamicLyricSpeed = it
                             }
+                        )
+                        SuperArrow(
+                            title = stringResource(R.string.island_offset),
+                            onClick = {
+                                showIslandOffsetDialog.value = true
+                            },
+                            holdDownState = showIslandOffsetDialog.value
                         )
                     }
                     SmallTitle(
@@ -395,6 +397,7 @@ fun ExtendPage(
     TitleRadiusDialog(showTitleRadiusDialog)
     TitleStrokeWidthDialog(showTitleStrokeWidthDialog)
     TitleStrokeColorDialog(showTitleStrokeColorDialog)
+    IslandOffsetDialog(showIslandOffsetDialog)
 }
 
 @Composable
@@ -679,6 +682,50 @@ fun TitleStrokeColorDialog(showDialog: MutableState<Boolean>) {
                 onClick = {
                     ActivityTools.colorCheck(value.value, unit = { config.titleBackgroundStrokeColorAndTransparency = it }, "#FFFFFF")
                     showDialog.value = false
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun IslandOffsetDialog(showDialog: MutableState<Boolean>) {
+    val value = remember { mutableStateOf(config.islandOffset.toString()) }
+    SuperDialog(
+        title = stringResource(R.string.island_offset),
+        summary = stringResource(R.string.lyric_background_radius_tips),
+        show = showDialog,
+        onDismissRequest = { showDialog.value = false },
+    ) {
+        TextField(
+            modifier = Modifier.padding(bottom = 16.dp),
+            value = value.value,
+            maxLines = 1,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            onValueChange = { value.value = it }
+        )
+        Row(
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            TextButton(
+                modifier = Modifier.weight(1f),
+                text = stringResource(R.string.cancel),
+                onClick = { showDialog.value = false }
+            )
+            Spacer(Modifier.width(20.dp))
+            TextButton(
+                modifier = Modifier.weight(1f),
+                text = stringResource(R.string.ok),
+                colors = ButtonDefaults.textButtonColorsPrimary(),
+                onClick = {
+                    if (value.value.toIntOrNull().isNotNull() && value.value.toInt() in 0..100) {
+                        config.islandOffset = value.value.toInt()
+                    } else {
+                        config.islandOffset = 39
+                        value.value = "39"
+                    }
+                    showDialog.value = false
+                    changeConfig()
                 }
             )
         }

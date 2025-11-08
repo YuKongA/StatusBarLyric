@@ -81,7 +81,6 @@
     <string name="lyrics_interpolator_bounce">彈跳效果</string>
     <string name="lyrics_animation_duration">歌詞動畫時間</string>
     <string name="lyric_animation_duration_tips">範圍：300~1000</string>
-    <string name="hide_notification_icon">隱藏通知圖示</string>
     <string name="limit_visibility_change">限制可見性更改</string>
     <string name="limit_visibility_change_tips">可以防止部分系統的特性導致有時間會出現</string>
     <string name="timeout_restore">超時關閉狀態列歌詞</string>
@@ -93,7 +92,6 @@
     <string name="dynamic_lyric_speed">動態歌詞速度 (Beta)</string>
     <string name="click_status_bar_to_hide_lyric">點擊狀態欄隱藏歌詞</string>
     <string name="long_click_status_bar_stop">長按狀態欄停止音樂</string>
-    <string name="system_special_page">系統特供</string>
     <string name="slide_status_bar_cut_songs">狀態欄滑動切歌</string>
     <string name="slide_status_bar_cut_songs_x_radius">滑動切歌 X 半徑</string>
     <string name="slide_status_bar_cut_songs_x_radius_tips">範圍：50~2000</string>
@@ -128,4 +126,5 @@
     <string name="buildtime">編譯時間</string>
     <string name="currentdevice">當前設備</string>
     <string name="info">資訊</string>
+    <string name="island_offset">超級島偏移量</string>
 </resources>

@@ -53,7 +53,6 @@ import androidx.core.graphics.toColorInt
 import androidx.core.util.Consumer
 import com.github.kyuubiran.ezxhelper.ClassUtils.loadClassOrNull
 import com.github.kyuubiran.ezxhelper.EzXHelper.moduleRes
-import com.github.kyuubiran.ezxhelper.HookFactory
 import com.github.kyuubiran.ezxhelper.HookFactory.`-Static`.createAfterHook
 import com.github.kyuubiran.ezxhelper.HookFactory.`-Static`.createHook
 import com.github.kyuubiran.ezxhelper.ObjectHelper.Companion.objectHelper
@@ -106,13 +105,6 @@ class SystemUILyric : BaseHook() {
                         c.iconView.setColorFilter(newValue, PorterDuff.Mode.SRC_IN)
                     }
                 }
-            } else {
-                if (config.lyricColor.isEmpty()) {
-                    lyricView.setTextColor(newValue)
-                }
-                if (config.iconColor.isEmpty()) {
-                    iconView.setColorFilter(newValue, PorterDuff.Mode.SRC_IN)
-                }
             }
         }
         "Changing Color: ${newValue.toColor()}".log()
@@ -135,8 +127,6 @@ class SystemUILyric : BaseHook() {
             base64ToBitmap(newValue).isNotNull { bmp ->
                 if (containers.isNotEmpty()) {
                     containers.forEach { it.iconView.setImageBitmap(bmp) }
-                } else {
-                    iconView.setImageBitmap(bmp)
                 }
             }
         }
@@ -154,19 +144,14 @@ class SystemUILyric : BaseHook() {
     var isHiding: Boolean = false
     private var isRandomAnima: Boolean = false
     private var autoHideController: Any? = null
-    private val isReady: Boolean get() = containers.isNotEmpty() || this@SystemUILyric::clockView.isInitialized
+    private val isReady: Boolean get() = containers.isNotEmpty()
 
     private var theoreticalWidth: Int = 0
     private lateinit var point: Point
 
-
     private val displayMetrics: DisplayMetrics by lazy { context.resources.displayMetrics }
     private val displayWidth: Int by lazy { displayMetrics.widthPixels }
     private val displayHeight: Int by lazy { displayMetrics.heightPixels }
-
-
-    private lateinit var clockView: TextView
-    private lateinit var targetView: ViewGroup
 
     // 独立控制每个状态栏歌词容器
     private data class LyricContainer(
@@ -181,12 +166,8 @@ class SystemUILyric : BaseHook() {
 
     // 判断传入的 View 是否为任意容器的时钟视图
     private fun isClockView(view: View?): Boolean {
-        if (view == null) return false
-        return if (containers.isNotEmpty()) {
-            containers.any { it.clock == view }
-        } else {
-            this::clockView.isInitialized && clockView == view
-        }
+        if (view == null || containers.isEmpty()) return false
+        return containers.any { it.clock == view }
     }
 
     // 创建歌词容器
@@ -226,38 +207,7 @@ class SystemUILyric : BaseHook() {
         }
     }
 
-
-    // 歌词视图
-    private val lyricView: LyricSwitchView by lazy {
-        object : LyricSwitchView(context) {
-            override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-                super.onSizeChanged(w, h, oldw, oldh)
-            }
-        }.apply {
-            if (!isReady) return@apply
-            setTypeface(clockView.typeface ?: Typeface.DEFAULT)
-            setSingleLine(true)
-            setMaxLines(1)
-        }
-    }
-    private val iconView: ImageView by lazy {
-        ImageView(context).apply {
-            visibility = View.GONE
-        }
-    }
-    private val lyricLayout: LinearLayout by lazy {
-        LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.MATCH_PARENT
-            )
-            addView(iconView)
-            addView(lyricView)
-            visibility = View.GONE
-        }
-    }
+    // 标题对话框
     private val titleDialog by lazy {
         TitleDialog(context)
     }
@@ -278,10 +228,10 @@ class SystemUILyric : BaseHook() {
                     val lyricWidth = getLyricWidth(c, lyric)
                     c.lyricView.width = lyricWidth
                     val i = theoreticalWidth - lyricWidth
-                    if (i > 0) {
+                    if (i > 0 && lyricWidth > 0) {
                         if (config.dynamicLyricSpeed) {
                             val proportion = i / lyricWidth
-                            val speed = 10 * proportion + 0.7f
+                            val speed = (10 * proportion + 0.7f).coerceIn(0.3f, 5.0f)
                             c.lyricView.setScrollSpeed(speed)
                             "Dynamic mode (update) - Proportion: $proportion, Speed: $speed".log()
                         } else {
@@ -292,27 +242,6 @@ class SystemUILyric : BaseHook() {
                     }
                     c.lyricView.post { c.lyricView.resumeScroll() }
                     c.lyricView.requestLayout()
-                }
-            } else {
-                val lyric = lastLyric
-                if (lyric.isNotEmpty()) {
-                    val lyricWidth = getLyricWidth(lyric)
-                    lyricView.width = lyricWidth
-                    val i = theoreticalWidth - lyricWidth
-                    if (i > 0) {
-                        if (config.dynamicLyricSpeed) {
-                            val proportion = i / lyricWidth
-                            val speed = 10 * proportion + 0.7f
-                            lyricView.setScrollSpeed(speed)
-                            "Dynamic mode (update) - Proportion: $proportion, Speed: $speed".log()
-                        } else {
-                            lyricView.setScrollSpeed(config.lyricSpeed.toFloat())
-                        }
-                    } else {
-                        lyricView.setScrollSpeed(config.lyricSpeed.toFloat())
-                    }
-                    lyricView.post { lyricView.resumeScroll() }
-                    lyricView.requestLayout()
                 }
             }
         }
@@ -333,24 +262,19 @@ class SystemUILyric : BaseHook() {
         "Hooking clock method".log()
         val miuiClock = loadClassOrNull("com.android.systemui.statusbar.views.MiuiClock")
         loadClassOrNull("com.android.systemui.statusbar.views.MiuiNotificationHeaderClock")
-        miuiClock?.constructorFinder()
-            ?.filterByParamCount(3)
-            ?.filterByParamTypes {
-                it[0] == Context::class.java
-            }?.single()?.createAfterHook {
-
+        miuiClock?.constructorFinder()?.filterByParamCount(3)?.filterByParamTypes { it[0] == Context::class.java }?.single()
+            ?.createAfterHook {
                 val miuiClock = it.thisObject as TextView
                 val miuiClockName = miuiClock.resources.getResourceEntryName(miuiClock.id)
                 if (miuiClockName == "clock" || miuiClockName == "pad_clock") {
                     miuiClock.post {
                         "Running MiuiClock".log()
-                        clockView = miuiClock
-                        if ((clockView.parent is LinearLayout).not()) {
+                        if ((miuiClock.parent is LinearLayout).not()) {
                             "Parent is not LinearLayout, cannot load lyric view.".log()
                             return@post
                         }
-                        val parent = (clockView.parent as LinearLayout).apply { gravity = Gravity.CENTER_VERTICAL }
-                        addContainerIfAbsent(clockView, parent)
+                        val parent = (miuiClock.parent as LinearLayout).apply { gravity = Gravity.CENTER_VERTICAL }
+                        addContainerIfAbsent(miuiClock, parent)
                         if (canLoad) {
                             lyricHookInit()
                             canLoad = false
@@ -393,10 +317,7 @@ class SystemUILyric : BaseHook() {
                     if (isMusicPlaying && !isHiding) {
                         if (it.args[0] == View.VISIBLE) {
                             val view = it.thisObject as View
-                            if (
-                                (isReady && config.hideTime && isClockView(view)) ||
-                                (notificationIconArea == view && config.hideNotificationIcon)
-                            ) {
+                            if (isReady && config.hideTime && isClockView(view)) {
                                 it.args[0] = View.GONE
                             }
                         }
@@ -413,31 +334,6 @@ class SystemUILyric : BaseHook() {
 
                     val mIconTint = it.thisObject.objectHelper().getObjectOrNullAs<Int>("mIconTint")
                     lastColor = mIconTint ?: Color.WHITE
-                }
-            }
-        }
-
-        // 隐藏通知图标
-        if (config.hideNotificationIcon) {
-            moduleRes.getString(R.string.hide_notification_icon).log()
-            fun HookFactory.hideNoticeIcon(mode: Int) {
-                after {
-                    val clazz = it.thisObject::class.java
-                    val name = if (mode == 0) "NotificationIconAreaController" else "CollapsedStatusBarFragment"
-                    val method = if (mode == 0) "mNotificationIconArea" else "mNotificationIconAreaInner"
-                    if (clazz.simpleName == name) {
-                        it.thisObject.objectHelper {
-                            notificationIconArea = this.getObjectOrNullAs<View>(method)!!
-                        }
-                    } else {
-                        notificationIconArea = clazz.superclass.getField(method).get(it.thisObject) as View
-                    }
-                }
-            }
-
-            loadClassOrNull("com.android.systemui.statusbar.phone.fragment.CollapsedStatusBarFragment").isNotNull {
-                it.methodFinder().filterByName("onViewCreated").single().createHook {
-                    hideNoticeIcon(1)
                 }
             }
         }
@@ -517,14 +413,6 @@ class SystemUILyric : BaseHook() {
                                                                 hit = true
                                                                 return@forEach
                                                             }
-                                                        }
-                                                    } else {
-                                                        val left = lyricLayout.left
-                                                        val top = lyricLayout.top
-                                                        val right = lyricLayout.right
-                                                        val bottom = lyricLayout.bottom
-                                                        if (x in left..right && y in top..bottom) {
-                                                            hit = true
                                                         }
                                                     }
 
@@ -730,7 +618,6 @@ class SystemUILyric : BaseHook() {
         "Showing LyricView".log()
         goMainThread {
             isHiding = false
-            // 多容器
             if (containers.isNotEmpty()) {
                 containers.forEach { c ->
                     if (config.lyricColor.isEmpty()) {
@@ -746,7 +633,7 @@ class SystemUILyric : BaseHook() {
                         width = lyricWidth
                         val i = theoreticalWidth - lyricWidth
                         "Lyric width: $lyricWidth, Theoretical width: $theoreticalWidth, i: $i".log()
-                        if (i > 0) {
+                        if (i > 0 && lyricWidth > 0) {
                             if (delay > 0) {
                                 val durationInSeconds = delay / 1000f
                                 if (durationInSeconds > 0) {
@@ -757,7 +644,7 @@ class SystemUILyric : BaseHook() {
                                 }
                             } else if (config.dynamicLyricSpeed) {
                                 val proportion = i / lyricWidth
-                                val speed = 10 * proportion + 0.7f
+                                val speed = (10 * proportion + 0.7f).coerceIn(0.3f, 5.0f)
                                 setScrollSpeed(speed)
                                 "Dynamic mode - Proportion: $proportion, Speed: $speed".log()
                             }
@@ -779,52 +666,7 @@ class SystemUILyric : BaseHook() {
                         c.clock.hideView()
                     }
                 }
-            } else {
-                // 单容器
-                lyricView.apply {
-                    if (config.lyricColor.isEmpty()) {
-                        setTextColor(clockView.currentTextColor)
-                    } else {
-                        setTextColor(config.lyricColor.toColorInt())
-                    }
-                    val lyricWidth = getLyricWidth(lyric)
-                    width = lyricWidth
-                    val i = theoreticalWidth - lyricWidth
-                    "Lyric width: $lyricWidth, Theoretical width: $theoreticalWidth, i: $i".log()
-                    if (i > 0) {
-                        if (delay > 0) {
-                            val durationInSeconds = delay / 1000f
-                            if (durationInSeconds > 0) {
-                                val speed = 0.3f + (i.toFloat() / lyricWidth) * (5f / durationInSeconds)
-                                val boundedSpeed = speed.coerceIn(0.3f, 5.0f)
-                                setScrollSpeed(boundedSpeed)
-                                "Delay mode - Duration: ${durationInSeconds}, Speed: $boundedSpeed".log()
-                            }
-                        } else if (config.dynamicLyricSpeed) {
-                            val proportion = i / lyricWidth
-                            val speed = 10 * proportion + 0.7f
-                            setScrollSpeed(speed)
-                            "Dynamic mode - Proportion: $proportion, Speed: $speed".log()
-                        }
-                    } else {
-                        setScrollSpeed(config.lyricSpeed.toFloat())
-                    }
-                    if (isRandomAnima) {
-                        val animation = randomAnima
-                        val interpolator = config.lyricInterpolator
-                        val duration = config.animationDuration
-                        inAnimation = LyricViewTools.switchViewInAnima(animation, interpolator, duration)
-                        outAnimation = LyricViewTools.switchViewOutAnima(animation, duration)
-                    }
-                    setText(lyric)
-                }
-                lyricLayout.cancelAnimation()
-                lyricLayout.showView()
-                if (config.hideTime) {
-                    clockView.hideView()
-                }
             }
-            if (config.hideNotificationIcon) notificationIconArea?.hideView()
             XiaomiHooks.getNotificationBigTime()?.visibility = View.GONE
         }
     }
@@ -854,10 +696,6 @@ class SystemUILyric : BaseHook() {
                     c.lyricView.setText("")
                     c.layout.hideView(false)
                 }
-            } else {
-                clockView.showView()
-                lyricView.setText("")
-                lyricLayout.hideView(false)
             }
             if (config.titleSwitch) titleDialog.hideTitle()
             notificationIconArea?.showView()
@@ -869,7 +707,10 @@ class SystemUILyric : BaseHook() {
         "Updating Config".log()
         config.update()
         goMainThread {
-            // 多容器
+            runCatching {
+                val base = XiaomiHooks.getLastIslandWidth()
+                superIslandWidth = if (base > 0) base + config.islandOffset else 0
+            }
             if (containers.isNotEmpty()) {
                 containers.forEach { c ->
                     c.lyricView.apply {
@@ -918,6 +759,25 @@ class SystemUILyric : BaseHook() {
                             }
                         }
                     }
+                    val lyric = lastLyric
+                    if (lyric.isNotEmpty()) {
+                        val lyricWidth = getLyricWidth(c, lyric)
+                        c.lyricView.width = lyricWidth
+                        val i = theoreticalWidth - lyricWidth
+                        if (i > 0 && lyricWidth > 0) {
+                            if (config.dynamicLyricSpeed) {
+                                val proportion = i / lyricWidth
+                                val speed = (10 * proportion + 0.7f).coerceIn(0.3f, 5.0f)
+                                c.lyricView.setScrollSpeed(speed)
+                            } else {
+                                c.lyricView.setScrollSpeed(config.lyricSpeed.toFloat())
+                            }
+                        } else {
+                            c.lyricView.setScrollSpeed(config.lyricSpeed.toFloat())
+                        }
+                        c.lyricView.post { c.lyricView.resumeScroll() }
+                        c.lyricView.requestLayout()
+                    }
                     if (config.iconSwitch) {
                         c.iconView.apply {
                             layoutParams = LinearLayout.LayoutParams(
@@ -954,117 +814,11 @@ class SystemUILyric : BaseHook() {
                         c.iconView.hideView()
                     }
                 }
-            } else {
-                // 单容器
-                lyricView.apply {
-                    setTextSize(
-                        TypedValue.COMPLEX_UNIT_SHIFT,
-                        if (config.lyricSize == 0) clockView.textSize else config.lyricSize.toFloat()
-                    )
-                    setMargins(
-                        config.lyricStartMargins,
-                        config.lyricTopMargins,
-                        config.lyricEndMargins,
-                        config.lyricBottomMargins
-                    )
-                    if (config.lyricColor.isEmpty()) {
-                        setTextColor(clockView.currentTextColor)
-                    } else {
-                        setTextColor(config.lyricColor.toColorInt())
-                    }
-                    setLetterSpacings(config.lyricLetterSpacing / 100f)
-                    setStrokeWidth(config.lyricStrokeWidth / 100f)
-                    if (!config.dynamicLyricSpeed) setScrollSpeed(config.lyricSpeed.toFloat())
-                    if (config.lyricBackgroundColor.isNotEmpty()) {
-                        val solidColor = config.lyricBackgroundColor.trim().split(",").first().trim().toColorInt()
-                        if (config.lyricBackgroundRadius != 0) {
-                            setBackgroundColor(Color.TRANSPARENT)
-                            background = GradientDrawable().apply {
-                                cornerRadius = config.lyricBackgroundRadius.toFloat()
-                                setColor(solidColor)
-                            }
-                        } else {
-                            setBackgroundColor(solidColor)
-                        }
-                    }
-                    val animation = config.lyricAnimation
-                    isRandomAnima = animation == 11
-                    if (!isRandomAnima) {
-                        val interpolator = config.lyricInterpolator
-                        val duration = config.animationDuration
-                        inAnimation = LyricViewTools.switchViewInAnima(animation, interpolator, duration)
-                        outAnimation = LyricViewTools.switchViewOutAnima(animation, duration)
-                    }
-                    runCatching {
-                        val file = File("${context.filesDir.path}/font")
-                        if (file.exists() && file.canRead()) {
-                            setTypeface(Typeface.createFromFile(file))
-                        }
-                    }
-                }
-                if (config.iconSwitch) {
-                    iconView.apply {
-                        layoutParams = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT
-                        ).apply {
-                            setMargins(
-                                config.iconStartMargins, config.iconTopMargins, 0, config.iconBottomMargins
-                            )
-                            if (config.iconSize == 0) {
-                                width = clockView.height / 2
-                                height = clockView.height / 2
-                            } else {
-                                width = config.iconSize
-                                height = config.iconSize
-                            }
-                        }
-                        if (config.iconColor.isEmpty()) {
-                            setColorFilter(clockView.currentTextColor, PorterDuff.Mode.SRC_IN)
-                        } else {
-                            setColorFilter(config.iconColor.toColorInt(), PorterDuff.Mode.SRC_IN)
-                        }
-                        if (config.iconBgColor.isEmpty()) {
-                            setBackgroundColor(Color.TRANSPARENT)
-                        } else {
-                            setBackgroundColor(config.iconBgColor.toColorInt())
-                        }
-                        showView()
-                    }
-                } else {
-                    iconView.hideView()
-                }
             }
         }
     }
 
-    // 单容器下获取歌词宽度
-    private fun getLyricWidth(lyric: String): Int {
-        "Getting Lyric Width".log()
-        val textView = TextView(context).apply {
-            setTextSize(
-                TypedValue.COMPLEX_UNIT_SHIFT, if (config.lyricSize == 0) clockView.textSize else config.lyricSize.toFloat()
-            )
-            setTypeface(clockView.typeface ?: Typeface.DEFAULT)
-            letterSpacing = config.lyricLetterSpacing / 100f
-            paint.strokeWidth = config.lyricStrokeWidth / 100f
-        }
-        val textWidth = textView.paint.measureText(lyric).toInt()
-        theoreticalWidth = textWidth
-        return if (config.lyricWidth == 0) {
-            min(
-                textView.paint.measureText(lyric).toInt(),
-                targetView.width - config.lyricStartMargins - config.lyricEndMargins - superIslandWidth
-            )
-        } else {
-            if (config.fixedLyricWidth) {
-                scaleWidth()
-            } else {
-                min(textView.paint.measureText(lyric).toInt(), scaleWidth())
-            }
-        }
-    }
-
-    // 多容器下获取歌词宽度
+    // 获取歌词宽度
     private fun getLyricWidth(container: LyricContainer, lyric: String): Int {
         "Getting Lyric Width (container)".log()
         val textView = TextView(context).apply {
@@ -1079,15 +833,14 @@ class SystemUILyric : BaseHook() {
         val textWidth = textView.paint.measureText(lyric).toInt()
         theoreticalWidth = textWidth
         return if (config.lyricWidth == 0) {
-            min(
-                textView.paint.measureText(lyric).toInt(),
-                container.target.width - config.lyricStartMargins - config.lyricEndMargins - superIslandWidth
-            )
+            val available = container.target.width - config.lyricStartMargins - config.lyricEndMargins - superIslandWidth
+            val safeAvailable = kotlin.math.max(0, available)
+            min(textWidth, safeAvailable)
         } else {
             if (config.fixedLyricWidth) {
                 scaleWidth()
             } else {
-                min(textView.paint.measureText(lyric).toInt(), scaleWidth())
+                min(textWidth, scaleWidth())
             }
         }
     }

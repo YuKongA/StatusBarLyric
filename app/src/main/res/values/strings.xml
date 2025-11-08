@@ -82,7 +82,6 @@
     <string name="lyrics_interpolator_bounce">Bounce</string>
     <string name="lyrics_animation_duration">Lyric Animation Duration</string>
     <string name="lyric_animation_duration_tips">Range: 300~1000</string>
-    <string name="hide_notification_icon">Automatically hide notification icons</string>
     <string name="limit_visibility_change">Limit Visibility Change</string>
     <string name="limit_visibility_change_tips">It can prevent the characteristics of some systems from causing time to appear</string>
     <string name="timeout_restore">Timeout closure status bar lyrics</string>
@@ -94,7 +93,6 @@
     <string name="dynamic_lyric_speed">Dynamic Lyric Speed(Beta)</string>
     <string name="click_status_bar_to_hide_lyric">Click Status Bar To Hide Lyric</string>
     <string name="long_click_status_bar_stop">Long Click Status Bar Stop Music</string>
-    <string name="system_special_page">System Special Page</string>
     <string name="slide_status_bar_cut_songs">Slide Status Bar Cut Songs</string>
     <string name="slide_status_bar_cut_songs_x_radius">Slide Status Bar Cut Songs X Radius</string>
     <string name="slide_status_bar_cut_songs_x_radius_tips">Range: 50~2000</string>
@@ -129,4 +127,5 @@
     <string name="buildtime">Build Time</string>
     <string name="currentdevice">Current Device</string>
     <string name="info">Info</string>
+    <string name="island_offset">Super Island Offset</string>
 </resources>

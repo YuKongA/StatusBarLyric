@@ -110,12 +110,6 @@ class LyricTextView(context: Context) : TextView(context), Choreographer.FrameCa
     private fun updateScrollPosition(step: Float) {
         val realTextLength = textLength
         val realLyricWidth = viewWidth
-        if (realTextLength <= realLyricWidth) {
-            currentX = 0f
-            stopScroll()
-            return
-        }
-
         val targetX = realLyricWidth - realTextLength
         if (currentX > targetX) {
             // 向左滚动
@@ -183,11 +177,6 @@ class LyricTextView(context: Context) : TextView(context), Choreographer.FrameCa
     }
 
     fun resumeScroll() {
-        if (textLength <= viewWidth) {
-            currentX = 0f
-            stopScroll()
-            return
-        }
         isScrolling = true
         lastFrameNanos = 0L
         Choreographer.getInstance().postFrameCallback(this)

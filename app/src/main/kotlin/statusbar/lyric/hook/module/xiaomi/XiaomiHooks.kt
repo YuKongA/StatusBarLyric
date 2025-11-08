@@ -37,11 +37,14 @@ import java.lang.ref.WeakReference
 class XiaomiHooks {
     companion object {
         private var notificationBigTimeRef: WeakReference<View>? = null
+        private var lastIslandWidth: Int = 0
 
         fun getNotificationBigTime(): View? = notificationBigTimeRef?.get()
         private fun setNotificationBigTime(view: View?) {
             notificationBigTimeRef = if (view.isNotNull()) WeakReference(view) else null
         }
+
+        fun getLastIslandWidth(): Int = lastIslandWidth
 
         fun init(systemUILyric: SystemUILyric) {
             // 处理通知中心时间
@@ -67,24 +70,13 @@ class XiaomiHooks {
                 }
             }
 
-            // 隐藏通知图标
-            if (config.hideNotificationIcon) {
-                loadClassOrNull("com.android.systemui.statusbar.phone.NotificationIconContainer").isNotNull {
-                    it.methodFinder().filterByName("onLayout").single().createHook {
-                        after {
-                            if (systemUILyric.notificationIconArea != null) return@after
-                            systemUILyric.notificationIconArea = it.thisObject as View
-                        }
-                    }
-                }
-            }
-
             // 获取超级岛宽度
             loadClassOrNull($$"com.android.systemui.statusbar.IslandMonitor$RealContainerIslandMonitor").isNotNull {
                 it.methodFinder().filterByName("getIslandWidth").firstOrNull()?.createHook {
                     after {
                         val islandWidth = it.result as Int
-                        systemUILyric.superIslandWidth = if (islandWidth > 0) islandWidth + 39 else 0
+                        lastIslandWidth = islandWidth
+                        systemUILyric.superIslandWidth = if (islandWidth > 0) islandWidth + config.islandOffset else 0
                     }
                 }
             }

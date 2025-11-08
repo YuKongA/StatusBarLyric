@@ -78,13 +78,6 @@ class Config {
         set(value) {
             config.put("showLauncherIcon", value)
         }
-    var hideNotificationIcon: Boolean
-        get() {
-            return config.opt("hideNotificationIcon", false)
-        }
-        set(value) {
-            config.put("hideNotificationIcon", value)
-        }
     var lyricSize: Int
         get() {
             return config.opt("lyricSize", 0)
@@ -206,7 +199,7 @@ class Config {
         }
     var timeoutRestore: Boolean
         get() {
-            return config.opt("timeoutRestore", true)
+            return config.opt("timeoutRestore", false)
         }
         set(value) {
             config.put("timeoutRestore", value)
@@ -392,6 +385,13 @@ class Config {
         }
         set(value) {
             config.put("pageRatio", value)
+        }
+    var islandOffset: Int
+        get() {
+            return config.opt("islandOffset", 39)
+        }
+        set(value) {
+            config.put("islandOffset", value)
         }
 
     private val defIconHashMap by lazy {
